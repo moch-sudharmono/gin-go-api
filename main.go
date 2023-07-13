@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -21,11 +20,18 @@ type album struct {
 	Price  float64 `json:"price"`
 }
 
+type basicauth struct {
+	ID     int64  `json:"id"`
+	User   string `json:"user"`
+	Scrt   string `json:"scrt"`
+	Active int8   `json:"active"`
+}
+
 func main() {
 	//Connection properties
 	cfg := mysql.Config{
-		User:   os.Getenv("DBUSER"),
-		Passwd: os.Getenv("DBPASS"),
+		User:   "root",       //os.Getenv("DBUSER"),
+		Passwd: "Dhimas123!", //os.Getenv("DBPASS"),
 		Net:    "tcp",
 		Addr:   "127.0.0.1:3306",
 		DBName: "recordings",
@@ -45,15 +51,29 @@ func main() {
 
 	fmt.Println("Database Connected!")
 
+	//Router
 	router := gin.Default()
+	// //Authorize Basic Auth
+	// authorized := router.Group("/", gin.BasicAuth(gin.Accounts{
+	// 	"foo":  "bar",
+	// 	"root": "pass",
+	// }))
+	//authorized.GET("/albums", getAlbums)
 	router.GET("/albums", getAlbums)
 	router.POST("/albums", createAlbum)
+	//private from db
 	router.GET("/album/:id", getAlbumById)
 	router.Run("localhost:8000")
 }
 
 // API get all
 func getAlbums(c *gin.Context) {
+	//Auth
+	// user := c.MustGet(gin.AuthUserKey).(string)
+	// if _, ok := secrets[user]; !ok {
+	// 	c.IndentedJSON(http.StatusInternalServerError, gin.H{"Message": "Unauthorized"})
+	// }
+
 	//Initiate return data
 	var albums []album
 
@@ -104,6 +124,17 @@ func createAlbum(c *gin.Context) {
 
 // API get specific album by id
 func getAlbumById(c *gin.Context) {
+	//TODO check user and password
+	_, _, hasAuth := c.Request.BasicAuth()
+	if !hasAuth {
+		c.IndentedJSON(http.StatusUnauthorized, gin.H{
+			"success":    false,
+			"message":    "Unauthorized",
+			"statusCode": http.StatusUnauthorized,
+			"data":       nil,
+		})
+		return
+	}
 	//Get parameter
 	param := c.Param("id")
 	id, _ := strconv.ParseInt(param, 10, 64)
@@ -117,11 +148,26 @@ func getAlbumById(c *gin.Context) {
 	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
 		// Check no data found
 		if err == sql.ErrNoRows {
-			c.IndentedJSON(http.StatusNotFound, gin.H{"Message": err})
+			c.IndentedJSON(http.StatusNotFound, gin.H{
+				"success":    false,
+				"message":    "Data album not found",
+				"statusCode": http.StatusNotFound,
+				"data":       nil,
+			})
 			return
 		}
-		c.IndentedJSON(http.StatusInternalServerError, gin.H{"Message": err})
+		c.IndentedJSON(http.StatusInternalServerError, gin.H{
+			"success":    false,
+			"message":    err,
+			"statusCode": http.StatusInternalServerError,
+			"data":       nil,
+		})
 	}
 
-	c.IndentedJSON(http.StatusOK, alb)
+	c.IndentedJSON(http.StatusOK, gin.H{
+		"success":    true,
+		"message":    "Data album successfully retrieved",
+		"statusCode": http.StatusOK,
+		"data":       alb,
+	})
 }
